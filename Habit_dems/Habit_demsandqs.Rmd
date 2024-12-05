@@ -1,0 +1,140 @@
+---
+title: "Habit_demsandqs"
+output: html_document
+date: "2024-10-08"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library("tidyr")
+library("dplyr")
+library("lubridate")
+
+environment(select)
+
+select <- dplyr::select
+```
+
+```{r}
+##merge qualtrics Habit data together
+#load qualtrics.RData [from 21oct2024] into environment from /Volumes/Hera/Projects/Habit/behave/qualtrics
+f <- function(d) {
+  select(d, matches("External|Recorded|upps")) %>% mutate(ExternalReference = as.character(ExternalReference))
+}
+Habit_uppsp_binded <- lapply(qualtrics, f) %>% bind_rows()
+#Get rid of all the extra na rows
+Habit_uppsp_binded <- Habit_uppsp_binded %>% filter_at(vars(ExternalReference), all_vars(!is.na(.)))
+
+#rename ID column and date column
+Habit_uppsp_binded <- Habit_uppsp_binded %>% rename(lunaid = ExternalReference)
+Habit_uppsp_binded <- Habit_uppsp_binded %>% rename(uppsp_timestamp = RecordedDate)
+
+#are there any repeat ID?
+length(unique(Habit_uppsp_binded$lunaid))
+#yes 141 unique ID but 143 observations
+
+##load Habit upps-p from Redcap
+Habit2_uppsp <- read.csv("/Volumes/Hera/Victoria/Habit_dems/AdolescentStriatalNe-Uppsp_DATA_2024-11-15.csv")
+#exclude columns we don't want
+Habit2_uppsp <- subset(Habit2_uppsp, select=-c(redcap_event_name,redcap_survey_identifier))
+#adjust formatting of columns
+Habit2_uppsp <- Habit2_uppsp %>% rename(lunaid = redcap_id)
+
+Habit2_uppsp <- Habit2_uppsp %>%
+  rename_with(
+    ~ paste0("UPPS-P.Q0_", seq_along(.)), starts_with("upps_"))
+
+Habit2_uppsp <- Habit2_uppsp %>%  mutate(across(starts_with("UPPS-P.Q0_"), 
+            ~ recode(.x, `1` = "Agree Strongly",  `2` = "Agree Some", `3` = "Disagree Some",  `4` = "Disagree Strongly")))
+#Get rid of all the extra na rows
+Habit2_uppsp <- Habit2_uppsp %>% filter_at(vars(`UPPS-P.Q0_59`), all_vars(!is.na(.)))
+
+#Merge into one dataset
+Habit2_uppsp <- Habit2_uppsp %>% mutate(across(everything(), as.character))
+Habit_uppsp_binded <- Habit_uppsp_binded %>% mutate(across(everything(), as.character))
+Habit_Merged_uppsp <- bind_rows(Habit_uppsp_binded, Habit2_uppsp)
+length(unique(Habit_Merged_uppsp$lunaid))
+
+#UPPS-P SPA data
+##load SPA upps-p from Redcap
+SPA_uppsp <- read.csv("/Volumes/Hera/Victoria/Habit_dems/SPAR01RefinementOfBr-Uppsp_DATA_2024-11-15.csv")
+#exclude columns we don't want
+SPA_uppsp <- subset(SPA_uppsp, select=-c(redcap_event_name,redcap_survey_identifier))
+#adjust formatting of columns
+SPA_uppsp <- SPA_uppsp %>% rename(lunaid = record_id)
+
+SPA_uppsp <- SPA_uppsp %>%
+  rename_with(
+    ~ paste0("UPPS-P.Q0_", seq_along(.)), starts_with("upps_"))
+
+SPA_uppsp <- SPA_uppsp %>%  mutate(across(starts_with("UPPS-P.Q0_"), 
+            ~ recode(.x, `1` = "Agree Strongly",  `2` = "Agree Some", `3` = "Disagree Some",  `4` = "Disagree Strongly")))
+#Get rid of all the extra na rows
+SPA_uppsp <- SPA_uppsp %>% filter_at(vars(`UPPS-P.Q0_59`), all_vars(!is.na(.)))
+length(unique(SPA_uppsp$lunaid))
+
+##Merge into one dataset for scoring
+SPA_uppsp <- SPA_uppsp %>% mutate(across(everything(), as.character))
+Full_Merged_uppsp <- bind_rows(Habit_Merged_uppsp, SPA_uppsp)
+
+#fix vdate to be consistent with other data
+Full_Merged_uppsp <- Full_Merged_uppsp %>% rename(vdate=uppsp_timestamp)
+Full_Merged_uppsp$vdate <- as.Date(Full_Merged_uppsp$vdate)
+
+#are there any repeat ID?
+length(unique(Full_Merged_uppsp$lunaid))
+#yes 217 unique ID but 238 observations
+
+```
+
+```{r}
+#now source uppsp_score.R and then come back here to run the function with the data
+uppsp <- uppsp_scoring(Full_Merged_uppsp)
+length(unique(uppsp$lunaid))
+
+#clean up the data
+final_uppsp <- select(uppsp, lunaid, vdate, upps_negurg, upps_pre, upps_pers, upps_ss, upps_pu, upps_tot)
+final_uppsp <- final_uppsp %>% filter(upps_tot!=0)
+length(unique(final_uppsp$lunaid)) #215
+```
+
+```{r}
+#calculate Cronbach's alpha
+alpha_uppsp <- subset(uppsp, select=-c(lunaid, vdate, upps_negurg, upps_pre, upps_pers, upps_ss, upps_pu, upps_tot))
+
+cronbachs_alpha(alpha_uppsp)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+#select fields we want
+Demsandqs <- select(All_dem_Habit, id, INTRO.Q1_1:INTRO.Q1_3, starts_with ("UPP"))
+#rename columns
+Demsandqs <- Demsandqs %>% rename(Testdate = INTRO.Q1_1)
+Demsandqs <- Demsandqs %>% rename(DOB = INTRO.Q1_2)
+Demsandqs <- Demsandqs %>% rename(Gender = INTRO.Q1_3)
+
+
+#calculate age
+#human error in entering dates, so a few cases missing
+Demsandqs <- Demsandqs %>%
+  mutate(form_Testdate = parse_date_time(as.character(Testdate), orders = c("%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y", "%B %d, %Y", "%m%d%Y", "%M%d%Y", "%M/%d/%y", "%M-%d-%y")))
+
+Demsandqs <- Demsandqs %>%
+  mutate(form_DOB = parse_date_time(as.character(DOB), orders = c("%m/%d/%Y", "%m-%d-%Y", "%m/%d/%y", "%m-%d-%y", "%B %d, %Y", "%m%d%Y", "%M%d%Y", "%M/%d/%y", "%M-%d-%y")))
+
+Demsandqs <- Demsandqs %>% mutate(Dec_Age = round(as.numeric((form_Testdate - form_DOB) / 365.25), 2))
+#re-order columns
+Demsandqs <- Demsandqs[, c(1:3, 64, 65, 66, 4:63)]
+
+#you got decimalized age good job! Except for those few weird people (11 will be excluded)
+```
+
+```{r eval=FALSE, include=FALSE}
+u <- function(b) {
+  select(b, matches("External|Intro")) %>% mutate(ExternalReference = as.character(ExternalReference))
+}
+Habit_age_binded <- lapply(qualtrics, u) %>% bind_rows()
+```
+
