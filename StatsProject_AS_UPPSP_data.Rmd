@@ -1,0 +1,337 @@
+---
+title: "StatsProject_AS_UPPSP_data"
+output: html_document
+date: "2024-10-18"
+---
+
+```{r setup, include=FALSE}
+#install.packages("performance")
+#install.packages("ppcor")
+library("dplyr")
+library("tidyr")
+library("ggplot2")
+library("performance")
+library("ppcor")
+library("lubridate")
+```
+
+
+```{r}
+#make age datatset for Habit #copied from Habit packet
+Habit_age_id <- read.csv("/Volumes/Hera/Victoria/Habit_dems/Habit_age_id.csv")
+Habit_age_id <- Habit_age_id %>% rename(lunaid = "LUNA.ID") %>% rename(vdate="DATE")
+Habit_age_id$vdate <- parse_date_time(as.character(Habit_age_id$vdate), orders = c("%m/%d/%Y", "%m/%d/%y"))
+#recode sex M/F to 1/2
+Habit_age_id <- Habit_age_id %>% mutate(SEX = recode(SEX, "M" = 1, "F" = 2))
+
+
+#make age datatset for SPA #downloaded from Redcap and then manipulated in excel
+SPA_age_id <- read.csv("/Volumes/Hera/Victoria/Habit_dems/SPA_age_id.csv")
+SPA_age_id <- SPA_age_id %>% rename(lunaid = "record_id") %>% rename(AGE = "recruit_age") %>% rename(SEX = "recruit_sex")
+#exclude columns we don't want
+SPA_age_id <- subset(SPA_age_id, select=-c(redcap_event_name))
+#fix vdate to be consistent with other data
+SPA_age_id<- SPA_age_id %>% rename(vdate=uppsp_timestamp)
+SPA_age_id$vdate <- as.Date(SPA_age_id$vdate, format="%m/%d/%Y %H:%M")
+
+
+final_age <- bind_rows(Habit_age_id, SPA_age_id)
+length(unique(final_age$lunaid))
+```
+
+```{r}
+str(final_uppsp$lunaid)
+str(final_as_data$lunaid)
+str(final_age$lunaid)
+
+#final_uppsp$lunaid <- as.character(final_uppsp$lunaid)
+#final_as_data$lunaid <- as.character(final_as_data$lunaid)
+final_age$lunaid <- as.character(final_age$lunaid)
+
+#merge age and as data
+#merge datasets on both 'ID' and 'vdate'
+final_as_age_data <- final_as_data %>% inner_join(final_age, by = c("lunaid", "vdate"))
+# 92 obervations now!
+count(final_as_age_data, !is.na(AGE), !is.na(n_1))
+length(unique(final_as_age_data$lunaid))
+#ID 12068 is repeated? I'll manually delete it
+final_as_age_data <- final_as_age_data %>%  distinct(lunaid, .keep_all = TRUE)
+
+#now merge with uppsp
+#59 ppts
+all_data_merged <- final_as_age_data %>% inner_join(final_uppsp, by = c("lunaid", "vdate"))
+
+count(all_data_merged, !is.na(upps_pre), !is.na(n_1))
+length(unique(all_data_merged$lunaid))
+
+#what if we merge all at once?
+#we get the same thing
+#merged_df <- final_as_data %>%
+#  inner_join(final_age, by = c("lunaid", "vdate")) %>%
+#  inner_join(final_uppsp, by = c("lunaid", "vdate"))
+
+```
+
+```{r}
+#descriptives
+mean(final_as_age_data$AGE)
+sd(final_as_age_data$AGE)
+
+table(final_as_age_data$SEX == "1")
+
+
+#time to plot
+
+hist(all_data_merged$upps_tot)
+mean(all_data_merged$upps_tot, na.rm=TRUE)
+sd(all_data_merged$upps_tot, na.rm=TRUE)
+range(all_data_merged$upps_tot)
+
+hist(all_data_merged$upps_pers)
+mean(all_data_merged$upps_pers, na.rm=TRUE)
+sd(all_data_merged$upps_pers, na.rm=TRUE)
+range(all_data_merged$upps_pers)
+
+plot(final_as_age_data$mean_lat_2)
+mean(final_as_age_data$mean_lat_2, na.rm=TRUE)
+sd(final_as_age_data$mean_lat_2, na.rm=TRUE)
+range(final_as_age_data$mean_lat_2)
+
+plot(final_as_age_data$percent_ec)
+mean(final_as_age_data$percent_ec, na.rm=TRUE)
+sd(final_as_age_data$percent_ec, na.rm=TRUE)
+range(final_as_age_data$percent_ec)
+```
+
+```{r}
+#simple linear regression age predicting as percent error corrected
+#significant!
+model_ec <- lm(percent_ec ~ AGE, final_as_age_data)
+summary(model_ec)
+
+ggplot(model_ec,aes(AGE, percent_ec)) +
+  geom_point() +
+  geom_smooth(method='lm')
+#simple linear regression age predicting as mean latency error corrected
+#without dec age no longer significant
+model_lat<- lm(mean_lat_2 ~ AGE, final_as_age_data)
+summary(model_lat)
+
+ggplot(model_lat,aes(AGE, mean_lat_2)) +
+  geom_point() +
+  geom_smooth(method='lm')
+
+#linear regression impulsivity predicting percent error corrected
+#significant!!
+model_uppsp_ec <- lm(percent_ec ~ upps_tot, all_data_merged)
+summary(model_uppsp_ec)
+model_pers_ec <- lm(percent_ec ~ upps_pers, all_data_merged)
+summary(model_pers_ec)
+#linear regression impulsivity predicting mean latency error corrected
+#not significant
+model_uppsp_lat <- lm(mean_lat_2 ~ upps_tot, all_data_merged)
+summary(model_uppsp_lat)
+model_pers_lat <- lm(mean_lat_2 ~ upps_pers, all_data_merged)
+summary(model_pers_lat)
+
+#multiple regression age + impulsivity predicting as percent error corrected
+#significant!
+mmodel_ec_uppsp <- lm(percent_ec ~ AGE + upps_tot, all_data_merged)
+summary(mmodel_ec_uppsp)
+MMODEL_EC_UPPSP_R2 <- summary(mmodel_ec_uppsp)$r.squared
+
+mmodel_ec2 <- lm(percent_ec ~ AGE, all_data_merged)
+summary(mmodel_ec2)
+MMODEL_EC_R2 <- summary(mmodel_ec2)$r.squared
+
+MMODEL_EC_UPPSP_R2 - MMODEL_EC_R2 #variance in percent_ec uniquely explained by upps_tot 
+MMODEL_EC_R2- MMODEL_EC_UPPSP_R2
+anova(mmodel_ec_uppsp, mmodel_ec2)
+
+#multiple regression age + impulsivity predicting mean latency error corrected
+#not significant
+mmodel_lat_uppsp <- lm(mean_lat_2 ~ AGE + upps_tot, all_data_merged)
+summary(mmodel_lat_uppsp)
+MMODEL_lat_UPPSP_R2 <- summary(mmodel_lat_uppsp)$r.squared
+
+mmodel_lat2 <- lm(mean_lat_2 ~ AGE, all_data_merged)
+summary(mmodel_lat2)
+MMODEL_lat_R2 <- summary(mmodel_lat2)$r.squared
+
+MMODEL_lat_UPPSP_R2 - MMODEL_lat_R2 #variance in mean latency uniquely explained by upps_tot 
+
+#multiple regression age + impulsivity predicting as percent error corrected
+#significant!
+mmodel_ec_uppsp_pers <- lm(percent_ec ~ AGE + upps_pers, all_data_merged)
+summary(mmodel_ec_uppsp_pers)
+MMODEL_EC_UPPSP_pers_R2 <- summary(mmodel_ec_uppsp_pers)$r.squared
+
+MMODEL_EC_UPPSP_pers_R2 - MMODEL_EC_R2 #variance in percent_ec uniquely explained by upps_pers 
+anova(mmodel_ec_uppsp_pers, mmodel_ec2)
+
+#multiple regression age + impulsivity predicting mean latency error corrected
+#not significant
+mmodel_lat_uppsp_pers <- lm(mean_lat_2 ~ AGE + upps_pers, all_data_merged)
+summary(mmodel_lat_uppsp_pers)
+MMODEL_lat_UPPSP_pers_R2 <- summary(mmodel_lat_uppsp_pers)$r.squared
+
+MMODEL_lat_UPPSP_pers_R2 - MMODEL_lat_R2 #variance in mean latency uniquely explained by upps_pers 
+```
+
+```{r}
+#make nice tables
+install.packages("sjPlot")
+library(sjPlot)
+tab_model(model_ec, model_lat,
+          show.se = TRUE, show.std = TRUE, show.stat = TRUE,
+          title = "Simple Regression Results Predicting Anti-Saccade Performance
+            From Age",
+          col.order = c("est", "std.est", "p"), #removed "est" and "se"
+          pred.labels = c("Intercept", "Age"), #can give your variable names labels
+          dv.labels = c("Percent Error Corrected Trials", "Mean Latency"), #can give column names labels
+          string.std = "ß",
+          string.p = "p-value",
+          file = "output1.html")
+
+tab_model(model_uppsp_ec, model_uppsp_lat, model_pers_ec, model_pers_lat,
+          show.se = TRUE, show.std = TRUE, show.stat = TRUE,
+          title = "Simple Regression Results Predicting Anti-Saccade Performance
+            From Impulsivity Traits",
+          col.order = c("est", "std.est", "p"), #removed "est" and "se"
+          pred.labels = c("Intercept", "Total Impulsivity", "Perseverance"), #can give your variable names labels
+          dv.labels = c("Percent Error Corrected Trials", "Mean Latency", "Percent Error Corrected Trials", "Mean Latency"), #can give column names labels
+          string.std = "ß",
+          string.p = "p-value",
+          file = "output2.html")
+
+tab_model(mmodel_ec_uppsp, mmodel_lat_uppsp,
+          show.se = TRUE, show.std = TRUE, show.stat = TRUE,
+          title = "Regression Results Predicting Anti-Saccade Performance
+            From Age and Total Impulsivity Score",
+          col.order = c("est", "std.est", "p"), #removed "est" and "se"
+          pred.labels = c("Intercept", "Age", "Total Impulsivity"), #can give your variable names labels
+          dv.labels = c("Percent Error Corrected Trials", "Mean Latency"), #can give column names labels
+          string.std = "ß",
+          string.p = "p-value",
+          file = "output3.html")
+
+tab_model(mmodel_ec_uppsp_pers, mmodel_lat_uppsp_pers,
+          show.se = TRUE, show.std = TRUE, show.stat = TRUE,
+          title = "Regression Results Predicting Anti-Saccade Performance
+            From Age and Perseverance Score",
+          col.order = c("est", "std.est", "p"), #removed "est" and "se"
+          pred.labels = c("Intercept", "Age", "Perseverance"), #can give your variable names labels
+          dv.labels = c("Percent Error Corrected Trials", "Mean Latency"), #can give column names labels
+          string.std = "ß",
+          string.p = "p-value",
+          file = "output4.html")
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+######CHECK ASSUMPTIONS#######
+install.packages("moments")
+install.packages("lmtest")
+library(moments)
+library(lmtest)
+
+
+#check_model(model_ec)
+
+#skewness pf distribution of percent_ec
+hist(final_as_age_data$percent_ec)
+skewness(final_as_age_data$percent_ec) #0.44
+#very high positive skew so use ladder of powers to reduce positive skew
+#natural log
+final_as_age_data$logpercent_ec <- log(final_as_age_data$percent_ec)
+skewness(final_as_age_data$logpercent_ec) #NaN
+#reciprocal root
+final_as_age_data$rrootpercent_ec <-(-1/final_as_age_data$percent_ec^.5)
+skewness(final_as_age_data$rrootpercent_ec)
+#inverse reciprocal
+final_as_age_data$inverpercent_ec <-(-1/final_as_age_data$percent_ec)
+skewness(final_as_age_data$inverpercent_ec)
+
+#functional form (linearity)
+ggplot(model_ec,aes(AGE, percent_ec)) +
+  geom_point() +
+  geom_smooth(method='lm', se = FALSE) +
+  geom_smooth(method = 'loess', se = FALSE, color="magenta4") +
+  theme_bw()
+
+plot(model_ec, 1)
+#not a horizontal line so might not be linear relationship
+
+
+#heteroscedasticity
+plot(model_ec, 3)
+#not scattered evenly around line
+bptest(model_ec)
+#but not significant so we cannot reject the null that residuals are homoscedastic that's good
+
+##why not working
+#normality of residuals
+plot(model_ec, 2)
+final_as_age_data <- final_as_age_data %>% mutate(m_resid = resid(model_ec))
+ks.test(scale(final_as_age_data$m_resid), "pnorm", mean=0, sd=1)
+
+plot(model_ec, 1:6, ask=FALSE)
+
+######DIAGNOSTICS########
+#leverage
+final_as_age_data$leverage <- hatvalues(model_ec)
+final_as_age_data$leverage
+
+k<-2
+n<-nrow(final_as_age_data)
+smallN_thresh<- 3*(k+1)/n
+plot(final_as_age_data$leverage) %>% abline(h=smallN_thresh, col="green")
+#no participant go over leverage cutoff so good!
+
+#distance
+final_as_age_data$r_stud<-rstudent(model_ec)
+plot(final_as_age_data$r_stud) %>% abline(h=2) %>%abline(h=-2)
+# 3 observations are over the line...
+
+#influence
+final_as_age_data$cook<- cooks.distance(model_ec)
+plot(final_as_age_data$cook)
+# 3 observations again
+ols_plot_dfbetas(model_ec)
+
+#cooks d range
+model_diagnostics <- influence.measures(model_ec)
+summary(model_diagnostics)
+
+model_diagnostics2 <- influence.measures(model_lat)
+summary(model_diagnostics2)
+
+model_diagnostics3 <- influence.measures(mmodel_ec_uppsp)
+summary(model_diagnostics3)
+
+model_diagnostics4 <- influence.measures(mmodel_lat_uppsp)
+summary(model_diagnostics4)
+
+model_diagnostics5 <- influence.measures(mmodel_ec_uppsp_pers)
+summary(model_diagnostics5)
+
+model_diagnostics6 <- influence.measures(mmodel_lat_uppsp_pers)
+summary(model_diagnostics6)
+
+
+#multicollinearity
+mc_vif<-check_collinearity(mmodel_ec_uppsp)
+mc_vif
+
+mc_vif2<-check_collinearity(mmodel_lat_uppsp)
+mc_vif2
+
+mc_vif3<-check_collinearity(mmodel_ec_uppsp_pers)
+mc_vif3
+
+mc_vif4<-check_collinearity(mmodel_lat_uppsp_pers)
+mc_vif4
+```
+
+

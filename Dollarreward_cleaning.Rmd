@@ -1,0 +1,87 @@
+---
+title: "Dollarreward_data_cleaning"
+output: html_document
+date: "2024-09-18"
+---
+
+```{r}
+#install.packages("eyelinker")
+#install.packages("devtools")
+
+library("MASS")
+library("dplyr")
+library("tidyr")
+library("stringr")
+library("lubridate")
+
+environment(select)
+
+select <- dplyr::select
+```
+
+```{r}
+#run dollarreward.R script in order to create score_all_anti function then come here
+  #make sure your working directory is file path for dollarreward.R script
+alldollarreward_data <- score_all_anti("/Volumes/L/bea_res/Data/Temporary Raw Data/lab_eyetracker/subj_info/sub-1*/ses*/*_DollarReward/sub_*.asc*")
+
+
+#we want to be sure we are not including test subjects in our dataset
+dollarreward_asub <- alldollarreward_data %>% filter(grepl("sub_1[0-9]{4}", file))
+#check it out- 2848 observed did not change so all good!
+head(dollarreward_asub)
+#this just counts every trial within a single run in a single session per participant
+dollarreward_asub %>% count(file)
+#why are there not 28 for all? What does this missing data mean?????????
+#ses-01 and ses-02? (there is still just one session per ppt but two ppt use ses 2 data)
+
+#separate out lunaid and date so it's easier to read
+#lunaid column
+dollarreward_asub <- dollarreward_asub %>% mutate(lunaid=str_extract(file,"\\d{5}"))
+dollarreward_asub$file
+#date column
+dollarreward_asub <- dollarreward_asub %>% mutate(date_extract=str_extract(file,"\\d{8}"))
+dollarreward_asub <- dollarreward_asub %>%
+  mutate(vdate = parse_date_time(as.character(date_extract), orders = c("%Y%m%d")))
+
+#only include neutral trials
+dollarreward_asub <- dollarreward_asub %>% filter(reward == "neu")
+dollarreward_asub %>% count(lunaid)
+length(unique(dollarreward_asub$lunaid))
+```
+
+```{r eval=FALSE, include=FALSE}
+##calculating percent of error corrected trials
+#separate out just ID and score with scored outcome 0,1,2
+ec_dollarreward_asub <- dollarreward_asub %>% select("lunaid", "score", "lat") %>%  filter(!(score == "-1"))
+
+
+#get a count of how many total trials and how many error corrected trials per ppt
+ec_count <- ec_dollarreward_asub %>% filter(score==2) %>% count(name="err_corr_trials", lunaid) %>%
+  # merge with all visits to get NAs in err_corr_trails for those with none
+  right_join(ec_dollarreward_asub %>% count(lunaid, name="total_trials")) %>% 
+  # turn those NAs into zeros
+  mutate(ifelse(is.na(err_corr_trials),0,err_corr_trials)) 
+
+#merge and mutate percent
+ec_count <- ec_count %>% mutate(percent_ec = (ifelse(is.na(err_corr_trials),0,err_corr_trials) / total_trials) * 100)
+```
+
+```{r}
+#we got percent error yay now add latency-- actually I can make a dataset that includes all of it at once
+dollarreward_asub <- relocate(dollarreward_asub, lunaid, vdate)
+lat_avg <- dollarreward_asub %>% group_by(lunaid, vdate, score) %>% filter(!(score == "-1")) %>%
+  summarise(n=n(),
+           mean_lat=mean(lat, na.rm=T), sd_lat=sd(lat, na.rm=T), 
+           min_lat=min(lat,na.rm=T))
+
+#make wide format
+lat_avg_wide <- lat_avg %>% pivot_wider(names_from="score", values_from = c("n", "mean_lat", "sd_lat", "min_lat"))
+
+  lat_avg_wide[is.na(lat_avg_wide)] <- 0
+
+#mutate percent
+final_as_data <- lat_avg_wide %>%  mutate(total_trials= n_1 + n_2 + n_0) %>% mutate(percent_ec = (n_2 / total_trials) * 100) %>% mutate(trials_1_2 = n_1 + n_2) %>% mutate(percent_ec_1_2 = (n_2/ trials_1_2) * 100)
+
+length(unique(final_as_data$lunaid))
+```
+
