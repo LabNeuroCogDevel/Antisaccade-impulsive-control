@@ -13,12 +13,12 @@ library("ggplot2")
 library("performance")
 library("ppcor")
 library("lubridate")
-```
 
+```
 
 ```{r}
 #make age datatset for Habit #copied from Habit packet
-Habit_age_id <- read.csv("/Volumes/Hera/Victoria/Habit_dems/Habit_age_id.csv")
+Habit_age_id <- read.csv("/Volumes/Hera/Victoria/Antisaccade-impulsive-control/Habit_dems/Habit_age_id.csv")
 Habit_age_id <- Habit_age_id %>% rename(lunaid = "LUNA.ID") %>% rename(vdate="DATE")
 Habit_age_id$vdate <- parse_date_time(as.character(Habit_age_id$vdate), orders = c("%m/%d/%Y", "%m/%d/%y"))
 #recode sex M/F to 1/2
@@ -26,7 +26,7 @@ Habit_age_id <- Habit_age_id %>% mutate(SEX = recode(SEX, "M" = 1, "F" = 2))
 
 
 #make age datatset for SPA #downloaded from Redcap and then manipulated in excel
-SPA_age_id <- read.csv("/Volumes/Hera/Victoria/Habit_dems/SPA_age_id.csv")
+SPA_age_id <- read.csv("/Volumes/Hera/Victoria/Antisaccade-impulsive-control/Habit_dems/SPA_age_id.csv")
 SPA_age_id <- SPA_age_id %>% rename(lunaid = "record_id") %>% rename(AGE = "recruit_age") %>% rename(SEX = "recruit_sex")
 #exclude columns we don't want
 SPA_age_id <- subset(SPA_age_id, select=-c(redcap_event_name))
@@ -37,6 +37,7 @@ SPA_age_id$vdate <- as.Date(SPA_age_id$vdate, format="%m/%d/%Y %H:%M")
 
 final_age <- bind_rows(Habit_age_id, SPA_age_id)
 length(unique(final_age$lunaid))
+
 ```
 
 ```{r}
@@ -64,22 +65,42 @@ all_data_merged <- final_as_age_data %>% inner_join(final_uppsp, by = c("lunaid"
 count(all_data_merged, !is.na(upps_pre), !is.na(n_1))
 length(unique(all_data_merged$lunaid))
 
-#what if we merge all at once?
-#we get the same thing
-#merged_df <- final_as_data %>%
-#  inner_join(final_age, by = c("lunaid", "vdate")) %>%
-#  inner_join(final_uppsp, by = c("lunaid", "vdate"))
 
+#write.csv(all_data_merged, "all_data_merged.csv")
+#write.csv(final_as_age_data, "final_as_age_data.csv")
 ```
 
 ```{r}
-#descriptives
+#demographics
 mean(final_as_age_data$AGE)
 sd(final_as_age_data$AGE)
 
 table(final_as_age_data$SEX == "1")
 
+#correlations to describe missingness!
+final_as_age_data <- read.csv("final_as_age_data.csv")
+final_as_age_data <- as.data.frame(final_as_age_data)
+final_uppsp <- as.data.frame(final_uppsp)
+str(final_as_age_data$lunaid)
+final_as_age_data$lunaid <- as.character(final_as_age_data$lunaid)
+final_uppsp$vdate <- as.character(final_uppsp$vdate)
 
+#now merge with uppsp, but I want to keep all IDs even if they don't match, then I'll mutate a dummy variable "missing" whereif they have upps-p=0 then it's coded 0
+missing_cases_all_data_merged <- final_as_age_data %>% left_join(final_uppsp, by = c("lunaid", "vdate"))
+count(missing_cases_all_data_merged, !is.na(upps_pre), !is.na(n_1))
+missing_cases_all_data_merged <- missing_cases_all_data_merged %>%  mutate(missing = ifelse(is.na(upps_tot), 1, 0))
+
+#bivariate correlations of percent error corrected and latency with missingness
+correlation_percent <- cor.test(missing_cases_all_data_merged$percent_ec, missing_cases_all_data_merged$missing, method = 'pearson')
+correlation_percent
+
+correlation_lat <- cor.test(missing_cases_all_data_merged$mean_lat_2, missing_cases_all_data_merged$missing, method = 'pearson')
+correlation_lat
+
+#rm(list = setdiff(ls(), -c("missing_cases_all_data_merged")))
+```
+
+```{r}
 #time to plot
 
 hist(all_data_merged$upps_tot)

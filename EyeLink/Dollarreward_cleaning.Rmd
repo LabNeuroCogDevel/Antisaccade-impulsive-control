@@ -26,11 +26,11 @@ alldollarreward_data <- score_all_anti("/Volumes/L/bea_res/Data/Temporary Raw Da
 
 
 #we want to be sure we are not including test subjects in our dataset
-dollarreward_asub <- alldollarreward_data %>% filter(grepl("sub_1[0-9]{4}", file))
+#dollarreward_asub <- alldollarreward_data %>% filter(grepl("sub_1[0-9]{4}", file))
 #check it out- 2848 observed did not change so all good!
-head(dollarreward_asub)
+#head(dollarreward_asub)
 #this just counts every trial within a single run in a single session per participant
-dollarreward_asub %>% count(file)
+#dollarreward_asub %>% count(file)
 #why are there not 28 for all? What does this missing data mean?????????
 #ses-01 and ses-02? (there is still just one session per ppt but two ppt use ses 2 data)
 
