@@ -35,7 +35,7 @@ length(unique(Habit_uppsp_binded$lunaid))
 #yes 141 unique ID but 143 observations
 
 ##load Habit upps-p from Redcap
-Habit2_uppsp <- read.csv("/Volumes/Hera/Victoria/Habit_dems/AdolescentStriatalNe-Uppsp_DATA_2024-11-15.csv")
+Habit2_uppsp <- read.csv("/Volumes/Hera/Victoria/Antisaccade-impulsive-control/Habit_dems/AdolescentStriatalNe-Uppsp_DATA_2024-11-15.csv")
 #exclude columns we don't want
 Habit2_uppsp <- subset(Habit2_uppsp, select=-c(redcap_event_name,redcap_survey_identifier))
 #adjust formatting of columns
@@ -58,7 +58,7 @@ length(unique(Habit_Merged_uppsp$lunaid))
 
 #UPPS-P SPA data
 ##load SPA upps-p from Redcap
-SPA_uppsp <- read.csv("/Volumes/Hera/Victoria/Habit_dems/SPAR01RefinementOfBr-Uppsp_DATA_2024-11-15.csv")
+SPA_uppsp <- read.csv("/Volumes/Hera/Victoria/Antisaccade-impulsive-control/Habit_dems/SPAR01RefinementOfBr-Uppsp_DATA_2024-11-15.csv")
 #exclude columns we don't want
 SPA_uppsp <- subset(SPA_uppsp, select=-c(redcap_event_name,redcap_survey_identifier))
 #adjust formatting of columns
@@ -100,10 +100,14 @@ length(unique(final_uppsp$lunaid)) #215
 ```
 
 ```{r}
-#calculate Cronbach's alpha
-alpha_uppsp <- subset(uppsp, select=-c(lunaid, vdate, upps_negurg, upps_pre, upps_pers, upps_ss, upps_pu, upps_tot))
+library(performance)
+#calculate Cronbach's alpha * for total impulsivity
+alpha_uppsp_total <- subset(uppsp, select=-c(lunaid, vdate, upps_negurg, upps_pre, upps_pers, upps_ss, upps_pu, upps_tot))
+cronbachs_alpha(alpha_uppsp_total)
 
-cronbachs_alpha(alpha_uppsp)
+#calculate Cronbach's alpha * for perseverance (Persitems<-c(4,9,14,19,24,27,32,37,42,47)
+alpha_uppsp_pers <- subset(alpha_uppsp_total, select=c("UPPS-P.Q0_4", "UPPS-P.Q0_9", "UPPS-P.Q0_14", "UPPS-P.Q0_19", "UPPS-P.Q0_24", "UPPS-P.Q0_27", "UPPS-P.Q0_32", "UPPS-P.Q0_37", "UPPS-P.Q0_42", "UPPS-P.Q0_47"))
+cronbachs_alpha(alpha_uppsp_pers)
 ```
 
 
